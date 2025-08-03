@@ -9,8 +9,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that can answer questions about T
 - **RAG System**: Uses ChromaDB for vector storage and semantic search
 - **Multiple LLM Options**: 
   - Local TinyLlama 1.1B model (CPU-based)
-  - Google Gemini Pro API
-  - OpenAI GPT models
+  - OpenAI GPT models (GPT-4o mini, GPT-4o, GPT-3.5 Turbo)
 - **Web Interface**: Simple HTML interface for chatting
 - **FastAPI Backend**: RESTful API with automatic documentation
 
@@ -51,7 +50,6 @@ movie-bot/
 
 3. **Set up environment variables** (optional, for API models):
    ```bash
-   export GOOGLE_API_KEY="your_google_api_key"
    export OPENAI_API_KEY="your_openai_api_key"
    ```
 
@@ -120,15 +118,13 @@ GET /health
 - **Performance**: Good for basic Q&A, runs entirely locally
 
 ### API Models
-- **Google Gemini Pro**: Requires Google API key
-- **OpenAI GPT-3.5/4**: Requires OpenAI API key
+- **OpenAI GPT-4o mini/4o/3.5 Turbo**: Requires OpenAI API key
 - **Performance**: Better quality responses, requires internet
 
 ## Configuration
 
 ### Environment Variables
-- `GOOGLE_API_KEY`: For Google Gemini embeddings and chat
-- `OPENAI_API_KEY`: For OpenAI models
+- `OPENAI_API_KEY`: For OpenAI embeddings and chat models
 
 ### Scrapy Settings
 - Concurrent requests: 16
@@ -137,7 +133,7 @@ GET /health
 - Retry on failures
 
 ### Vector Store
-- Embedding model: Google Gemini (fallback to sentence-transformers)
+- Embedding model: OpenAI text-embedding-3-small (fallback to sentence-transformers)
 - Chunk size: 1000 characters
 - Overlap: 200 characters
 - Retrieval: Top 3 most relevant episodes

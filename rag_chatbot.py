@@ -22,7 +22,7 @@ import chromadb
 from chromadb.config import Settings
 
 # LangChain imports
-from langchain.embeddings import GoogleGenerativeAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
@@ -35,9 +35,11 @@ from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMOutput
 
 # API LLM support
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class ChatMessage(BaseModel):
     """Model for chat messages"""
@@ -160,20 +162,20 @@ class SimpsonsRAGChatbot:
         
         # Initialize embeddings
         try:
-            # Try to use Google Gemini embeddings
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if google_api_key:
-                embeddings = GoogleGenerativeAIEmbeddings(
-                    model="models/embedding-001",
-                    google_api_key=google_api_key
+            # Try to use OpenAI embeddings (GPT-4o mini)
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if openai_api_key:
+                embeddings = OpenAIEmbeddings(
+                    model="text-embedding-3-small",
+                    openai_api_key=openai_api_key
                 )
-                print("Using Google Gemini embeddings")
+                print("Using OpenAI embeddings (GPT-4o mini)")
             else:
                 # Fallback to sentence transformers
                 from sentence_transformers import SentenceTransformer
                 model = SentenceTransformer('all-MiniLM-L6-v2')
                 embeddings = model.encode
-                print("Using sentence-transformers embeddings")
+                print("Using sentence-transformers embeddings (fallback)")
         except Exception as e:
             print(f"Error initializing embeddings: {e}")
             return
@@ -215,20 +217,12 @@ class SimpsonsRAGChatbot:
             if api_key is None:
                 raise HTTPException(status_code=400, detail="API key required for external models")
             
-            if model_name and "gpt" in model_name.lower():
-                # OpenAI model
-                self.llm = ChatOpenAI(
-                    openai_api_key=api_key,
-                    model_name=model_name or "gpt-3.5-turbo",
-                    temperature=0.7
-                )
-            else:
-                # Google Gemini model
-                self.llm = ChatGoogleGenerativeAI(
-                    google_api_key=api_key,
-                    model=model_name or "gemini-pro",
-                    temperature=0.7
-                )
+            # OpenAI model (default to GPT-4o mini)
+            self.llm = ChatOpenAI(
+                openai_api_key=api_key,
+                model_name=model_name or "gpt-4o-mini",
+                temperature=0.7
+            )
         
         return self.llm
     
