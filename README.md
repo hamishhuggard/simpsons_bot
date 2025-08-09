@@ -6,6 +6,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that can answer questions about T
 
 - **Parallel Scraping**: Uses Scrapy to scrape Simpsons episodes from IMDb in parallel
 - **Incremental Data Saving**: Saves scraped data incrementally to CSV and JSON files
+- **Smart Filtering**: Automatically filters out placeholder/future episodes that haven't aired yet
 - **RAG System**: Uses ChromaDB for vector storage and semantic search
 - **Multiple LLM Options**: 
   - Local TinyLlama 1.1B model (CPU-based)
@@ -131,6 +132,13 @@ GET /health
 - Download delay: 0.5 seconds
 - Auto-throttling enabled
 - Retry on failures
+
+### Episode Filtering
+The scraper automatically filters out placeholder/future episodes that haven't aired yet by detecting:
+- Generic episode titles (e.g., "Episode #37.1")
+- Future air dates (more than 30 days ahead)
+- "Add a plot" buttons indicating missing content
+- Episodes with no description AND no rating
 
 ### Vector Store
 - Embedding model: OpenAI text-embedding-3-small (fallback to sentence-transformers)
