@@ -7,7 +7,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that can answer questions about T
 - **Parallel Scraping**: Uses Scrapy to scrape Simpsons episodes from IMDb in parallel
 - **Incremental Data Saving**: Saves scraped data incrementally to CSV and JSON files
 - **Smart Filtering**: Automatically filters out placeholder/future episodes that haven't aired yet
-- **RAG System**: Uses ChromaDB for vector storage and semantic search
+- **RAG System**: Uses ChromaDB for vector storage and semantic search with optimized embeddings
 - **Multiple LLM Options**: 
   - Local TinyLlama 1.1B model (CPU-based)
   - OpenAI GPT models (GPT-4o mini, GPT-4o, GPT-3.5 Turbo)
@@ -48,6 +48,8 @@ movie-bot/
    ```bash
    pip install -r requirements.txt
    ```
+   
+   > **Note**: If you encounter dependency conflicts, try installing with `pip install --upgrade pip` first, or install packages individually to let pip resolve compatible versions.
 
 3. **Set up environment variables** (optional, for API models):
    ```bash
@@ -142,9 +144,9 @@ The scraper automatically filters out placeholder/future episodes that haven't a
 
 ### Vector Store
 - Embedding model: OpenAI text-embedding-3-small (fallback to sentence-transformers)
-- Chunk size: 1000 characters
-- Overlap: 200 characters
-- Retrieval: Top 3 most relevant episodes
+- Embeddings: Episode title and description only (optimized for semantic search)
+- Document format: Complete episodes (no chunking to preserve episode integrity)
+- Retrieval: Top 3 most relevant episodes with formatted context
 
 ## Example Queries
 

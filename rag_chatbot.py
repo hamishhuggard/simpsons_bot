@@ -22,12 +22,21 @@ import chromadb
 from chromadb.config import Settings
 
 # LangChain imports
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+try:
+    from langchain_openai import OpenAIEmbeddings
+except ImportError:
+    from langchain.embeddings import OpenAIEmbeddings
+
+try:
+    from langchain_community.vectorstores import Chroma
+except ImportError:
+    from langchain.vectorstores import Chroma
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
 
 # Local LLM support
 from ctransformers import AutoModelForCausalLM
@@ -129,67 +138,94 @@ class SimpsonsRAGChatbot:
         # Create documents from episodes
         documents = []
         for episode in self.episodes_data:
-            # Create a comprehensive text representation of the episode
-            episode_text = f"""
-            Season {episode.get('season', 'N/A')}, Episode {episode.get('episode_number_in_season', 'N/A')}: {episode.get('episode_title', 'N/A')}
+            # Use only title and description for the vector embeddings
+            # This makes search more focused and relevant
+            title = episode.get('episode_title', 'N/A')
+            description = episode.get('description', 'N/A')
             
-            Air Date: {episode.get('air_date', 'N/A')}
-            Description: {episode.get('description', 'N/A')}
-            IMDb Rating: {episode.get('imdb_rating', 'N/A')}
-            Vote Count: {episode.get('vote_count', 'N/A')}
-            Episode URL: {episode.get('episode_url', 'N/A')}
-            """
+            # Skip episodes without meaningful content
+            if title == 'N/A' and description == 'N/A':
+                continue
             
-            # Create metadata
+            # Create focused content for embeddings (title + description only)
+            episode_content = f"{title}\n\n{description}" if description != 'N/A' else title
+            
+            # Create comprehensive metadata for context
             metadata = {
                 'season': episode.get('season', 'N/A'),
                 'episode_number': episode.get('episode_number_in_season', 'N/A'),
-                'title': episode.get('episode_title', 'N/A'),
+                'title': title,
                 'air_date': episode.get('air_date', 'N/A'),
+                'description': description,
                 'imdb_rating': episode.get('imdb_rating', 'N/A'),
+                'vote_count': episode.get('vote_count', 'N/A'),
                 'url': episode.get('episode_url', 'N/A')
             }
             
-            documents.append(Document(page_content=episode_text, metadata=metadata))
+            documents.append(Document(page_content=episode_content, metadata=metadata))
         
-        # Split documents
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-        )
-        split_docs = text_splitter.split_documents(documents)
+        # Don't split documents since episode descriptions are usually short
+        # and we want to keep them intact for better context
+        print(f"Created {len(documents)} documents for vector store")
         
         # Initialize embeddings
         try:
-            # Try to use OpenAI embeddings (GPT-4o mini)
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if openai_api_key:
+            # Try OpenAI embeddings first
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
                 embeddings = OpenAIEmbeddings(
-                    model="text-embedding-3-small",
-                    openai_api_key=openai_api_key
+                    openai_api_key=api_key,
+                    model="text-embedding-3-small"
                 )
-                print("Using OpenAI embeddings (GPT-4o mini)")
+                print("Using OpenAI embeddings")
             else:
                 # Fallback to sentence transformers
-                from sentence_transformers import SentenceTransformer
-                model = SentenceTransformer('all-MiniLM-L6-v2')
-                embeddings = model.encode
-                print("Using sentence-transformers embeddings (fallback)")
-        except Exception as e:
-            print(f"Error initializing embeddings: {e}")
-            return
-        
-        # Create vector store
-        try:
-            self.vectorstore = Chroma.from_documents(
-                documents=split_docs,
-                embedding=embeddings,
-                persist_directory="./chroma_db"
+                try:
+                    from langchain_community.embeddings import HuggingFaceEmbeddings
+                except ImportError:
+                    from langchain.embeddings import HuggingFaceEmbeddings
+                
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+                print("Using HuggingFace embeddings")
+            
+            # Create vector store
+            chroma_client = chromadb.PersistentClient(path="./chroma_db")
+            
+            self.vectorstore = Chroma(
+                client=chroma_client,
+                collection_name="simpsons_episodes",
+                embedding_function=embeddings,
             )
-            print(f"Vector store initialized with {len(split_docs)} document chunks")
+            
+            # Add documents to vector store
+            self.vectorstore.add_documents(documents)
+            print(f"Vector store initialized with {len(documents)} episodes")
+
         except Exception as e:
             print(f"Error creating vector store: {e}")
+    
+    def format_episode_context(self, docs: List[Document]) -> str:
+        """Format retrieved documents into a clean context string"""
+        if not docs:
+            return "No relevant episodes found."
+        
+        formatted_episodes = []
+        for doc in docs:
+            metadata = doc.metadata
+            
+            # Format episode information cleanly
+            episode_info = f"""
+Season {metadata.get('season', 'N/A')}, Episode {metadata.get('episode_number', 'N/A')}: {metadata.get('title', 'N/A')}
+Air Date: {metadata.get('air_date', 'N/A')}
+Description: {metadata.get('description', 'N/A')}
+IMDb Rating: {metadata.get('imdb_rating', 'N/A')}
+""".strip()
+            
+            formatted_episodes.append(episode_info)
+        
+        return "\n\n---\n\n".join(formatted_episodes)
     
     def get_llm(self, model_type: str = "local", api_key: Optional[str] = None, model_name: Optional[str] = None):
         """Get LLM based on model type"""
@@ -290,31 +326,56 @@ class SimpsonsRAGChatbot:
                 if self.vectorstore is None:
                     raise HTTPException(status_code=500, detail="Vector store not initialized")
                 
-                # Create conversation chain
+                # Create conversation chain with custom prompt
                 memory = ConversationBufferMemory(
                     memory_key="chat_history",
-                    return_messages=True
+                    return_messages=True,
+                    output_key="answer"
                 )
                 
-                qa_chain = ConversationalRetrievalChain.from_llm(
+                # Get relevant documents first to format them properly
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
+                relevant_docs = retriever.get_relevant_documents(message.message)
+                
+                # Format episode information for better context
+                formatted_context = self.format_episode_context(relevant_docs)
+                
+                # Create a simple QA chain with formatted context
+                from langchain.chains.question_answering import load_qa_chain
+                
+                custom_prompt = PromptTemplate(
+                    input_variables=["context", "question"],
+                    template="""You are a helpful assistant that answers questions about The Simpsons episodes. Use the provided episode information to answer the user's question.
+
+Episode Information:
+{context}
+
+Question: {question}
+
+Please provide a helpful and accurate answer based on the episode information above. If the question asks about a specific episode, include relevant details like the season/episode number, air date, and description. If you don't find relevant information in the provided episodes, say so clearly.
+
+Answer:"""
+                )
+                
+                qa_chain = load_qa_chain(
                     llm=llm,
-                    retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
-                    memory=memory,
-                    return_source_documents=True
+                    chain_type="stuff",
+                    prompt=custom_prompt
                 )
                 
-                # Get response
-                result = qa_chain({"question": message.message})
+                # Get response with formatted context
+                result = qa_chain({
+                    "input_documents": relevant_docs,
+                    "question": message.message
+                })
                 
-                # Extract relevant episode information
+                # Extract relevant episode information from the most relevant document
                 relevant_episode = None
-                if result.get("source_documents"):
-                    # Get the most relevant episode from source documents
-                    source_doc = result["source_documents"][0]
-                    relevant_episode = source_doc.metadata
+                if relevant_docs:
+                    relevant_episode = relevant_docs[0].metadata
                 
                 return ChatResponse(
-                    response=result["answer"],
+                    response=result["output_text"],
                     relevant_episode=relevant_episode,
                     model_used=f"{message.model_type}_{message.model_name or 'tinyllama'}",
                     timestamp=datetime.now().isoformat()
